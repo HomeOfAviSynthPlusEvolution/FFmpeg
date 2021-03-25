@@ -3401,7 +3401,7 @@ alsa_outdev_deps="alsa"
 avfoundation_indev_deps="avfoundation corevideo coremedia pthreads"
 avfoundation_indev_suggest="coregraphics applicationservices"
 avfoundation_indev_extralibs="-framework Foundation"
-audiotoolbox_outdev_deps="audiotoolbox pthreads"
+audiotoolbox_outdev_deps="audiotoolbox pthreads libstaticallydisabled"
 audiotoolbox_outdev_extralibs="-framework AudioToolbox -framework CoreAudio"
 bktr_indev_deps_any="dev_bktr_ioctl_bt848_h machine_ioctl_bt848_h dev_video_bktr_ioctl_bt848_h dev_ic_bt8xx_h"
 caca_outdev_deps="libcaca"
@@ -6199,7 +6199,7 @@ check_lib mediandk "stdint.h media/NdkImage.h" AImage_delete -lmediandk
 check_lib camera2ndk "stdbool.h stdint.h camera/NdkCameraManager.h" ACameraManager_create -lcamera2ndk
 
 enabled appkit       && check_apple_framework AppKit
-enabled audiotoolbox && check_apple_framework AudioToolbox
+enabled audiotoolbox && enable audiotoolbox && add_cppflags "-I`pwd`/3rdparty/qaac" #&& check_apple_framework AudioToolbox
 enabled avfoundation && check_apple_framework AVFoundation
 enabled coreimage    && check_apple_framework CoreImage
 enabled videotoolbox && check_apple_framework VideoToolbox
