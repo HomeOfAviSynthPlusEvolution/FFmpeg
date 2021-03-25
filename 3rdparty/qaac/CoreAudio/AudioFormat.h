@@ -46,7 +46,12 @@ enum {
    //
    // ID3 tag (MP3 metadata) properties
    kAudioFormatProperty_ID3TagSize                       = 'id3s',
-   kAudioFormatProperty_ID3TagToDictionary               = 'id3d'
+   kAudioFormatProperty_ID3TagToDictionary               = 'id3d',
+
+   // TODO: sort these entries.
+   kAudioFormatMPEG4AAC_ELD                              = 'aace',
+   kAudioFormatiLBC                                      = 'ilbc',
+   kAudioFormatMicrosoftGSM                              = 0x6D730031,
 };
 
 typedef UInt32 AudioFormatPropertyID;
