@@ -118,6 +118,16 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
                         repeat_first_field = buf[3] & (1 << 1);
                         progressive_frame = buf[4] & (1 << 7);
 
+                        int picture_structure = buf[2] & 3;
+                        switch (picture_structure) {
+                        case 1:
+                                s->picture_structure = AV_PICTURE_STRUCTURE_TOP_FIELD; break;
+                        case 2:
+                                s->picture_structure = AV_PICTURE_STRUCTURE_BOTTOM_FIELD; break;
+                        case 3:
+                                s->picture_structure = AV_PICTURE_STRUCTURE_FRAME; break;
+                        }
+
                         /* check if we must repeat the frame */
                         s->repeat_pict = 1;
                         if (repeat_first_field) {
