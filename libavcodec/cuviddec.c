@@ -760,6 +760,7 @@ static av_cold int cuvid_decode_end(AVCodecContext *avctx)
 
 static int cuvid_test_capabilities(AVCodecContext *avctx,
                                    const CUVIDPARSERPARAMS *cuparseinfo,
+                                   cudaVideoChromaFormat probed_chroma_format,
                                    int probed_width,
                                    int probed_height,
                                    int bit_depth, int is_yuv422, int is_yuv444)
@@ -787,12 +788,7 @@ static int cuvid_test_capabilities(AVCodecContext *avctx,
         = cuparseinfo->CodecType;
 
     ctx->caps8.eChromaFormat = ctx->caps10.eChromaFormat = ctx->caps12.eChromaFormat
-        = is_yuv444 ? cudaVideoChromaFormat_444 :
-#ifdef NVDEC_HAVE_422_SUPPORT
-          (is_yuv422 ? cudaVideoChromaFormat_422 : cudaVideoChromaFormat_420);
-#else
-          cudaVideoChromaFormat_420;
-#endif
+        = probed_chroma_format;
 
     ctx->caps8.nBitDepthMinus8 = 0;
     ctx->caps10.nBitDepthMinus8 = 2;
@@ -827,13 +823,8 @@ static int cuvid_test_capabilities(AVCodecContext *avctx,
             return res8;
     }
 
-    if (!ctx->caps8.bIsSupported) {
-        av_log(avctx, AV_LOG_ERROR, "Codec %s is not supported with this chroma format.\n", avctx->codec->name);
-        return AVERROR(EINVAL);
-    }
-
     if (!caps->bIsSupported) {
-        av_log(avctx, AV_LOG_ERROR, "Bit depth %d with this chroma format is not supported.\n", bit_depth);
+        av_log(avctx, AV_LOG_ERROR, "Hardware is lacking required capabilities\n");
         return AVERROR(EINVAL);
     }
 
@@ -875,13 +866,21 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
                                        AV_PIX_FMT_NONE,
                                        AV_PIX_FMT_NONE };
 
+    cudaVideoChromaFormat probed_chroma_format = cudaVideoChromaFormat_420;
     int probed_width = avctx->coded_width ? avctx->coded_width : 1280;
     int probed_height = avctx->coded_height ? avctx->coded_height : 720;
     int probed_bit_depth = 8, is_yuv444 = 0, is_yuv422 = 0;
 
     const AVPixFmtDescriptor *probe_desc = av_pix_fmt_desc_get(avctx->pix_fmt);
-    if (probe_desc && probe_desc->nb_components)
-        probed_bit_depth = probe_desc->comp[0].depth;
+    if (probe_desc) {
+        if (probe_desc->log2_chroma_w == 1 && probe_desc->log2_chroma_h == 0)
+            probed_chroma_format = cudaVideoChromaFormat_422;
+        else if (probe_desc->log2_chroma_w == 0 && probe_desc->log2_chroma_h == 0)
+            probed_chroma_format = cudaVideoChromaFormat_444;
+
+        if (probe_desc->nb_components)
+            probed_bit_depth = probe_desc->comp[0].depth;
+    }
 
     if (probe_desc && !probe_desc->log2_chroma_w && !probe_desc->log2_chroma_h)
         is_yuv444 = 1;
@@ -1099,6 +1098,7 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
         goto error;
 
     ret = cuvid_test_capabilities(avctx, &ctx->cuparseinfo,
+                                  probed_chroma_format,
                                   probed_width,
                                   probed_height,
                                   probed_bit_depth, is_yuv422, is_yuv444);
