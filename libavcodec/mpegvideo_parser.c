@@ -41,7 +41,7 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
     uint32_t start_code;
     int frame_rate_index, ext_type, bytes_left;
     int frame_rate_ext_n, frame_rate_ext_d;
-    int top_field_first, repeat_first_field, progressive_frame;
+    int picture_structure, top_field_first, repeat_first_field;
     int horiz_size_ext, vert_size_ext, bit_rate_ext;
     int did_set_size=0;
     int set_dim_ret = 0;
@@ -51,6 +51,7 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
     enum AVPixelFormat pix_fmt = AV_PIX_FMT_NONE;
 //FIXME replace the crap with get_bits()
     s->repeat_pict = 0;
+    s->picture_structure = AV_PICTURE_STRUCTURE_UNKNOWN;
 
     while (buf < buf_end) {
         start_code= -1;
@@ -59,6 +60,7 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
         switch(start_code) {
         case PICTURE_START_CODE:
             if (bytes_left >= 2) {
+                s->output_picture_number = (buf[0] << 2) | (buf[1] >> 6);
                 s->pict_type = (buf[1] >> 3) & 7;
                 if (bytes_left >= 4)
                     vbv_delay = ((buf[1] & 0x07) << 13) | (buf[2] << 5) | (buf[3] >> 3);
@@ -114,9 +116,10 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
                     break;
                 case 0x8: /* picture coding extension */
                     if (bytes_left >= 5) {
+                        picture_structure = buf[2] & 0x03;
                         top_field_first = buf[3] & (1 << 7);
                         repeat_first_field = buf[3] & (1 << 1);
-                        progressive_frame = buf[4] & (1 << 7);
+                        avctx->progressive_frame = !!(buf[4] & (1 << 7));
 
                         /* check if we must repeat the frame */
                         s->repeat_pict = 1;
@@ -126,18 +129,30 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
                                     s->repeat_pict = 5;
                                 else
                                     s->repeat_pict = 3;
-                            } else if (progressive_frame) {
+                            } else if (avctx->progressive_frame) {
                                 s->repeat_pict = 2;
                             }
                         }
 
-                        if (!pc->progressive_sequence && !progressive_frame) {
+                        if (!pc->progressive_sequence) {
                             if (top_field_first)
                                 s->field_order = AV_FIELD_TT;
                             else
                                 s->field_order = AV_FIELD_BB;
                         } else
                             s->field_order = AV_FIELD_PROGRESSIVE;
+
+                        switch (picture_structure) {
+                        case PICT_TOP_FIELD:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_TOP_FIELD;
+                            break;
+                        case PICT_BOTTOM_FIELD:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_BOTTOM_FIELD;
+                            break;
+                        case PICT_FRAME:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
+                            break;
+                        }
                     }
                     break;
                 }

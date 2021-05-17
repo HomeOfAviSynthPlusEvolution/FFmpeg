@@ -108,6 +108,7 @@ int avcodec_parameters_from_context(AVCodecParameters *par,
         par->width               = codec->width;
         par->height              = codec->height;
         par->field_order         = codec->field_order;
+        par->progressive_frame   = codec->progressive_frame;
         par->color_range         = codec->color_range;
         par->color_primaries     = codec->color_primaries;
         par->color_trc           = codec->color_trc;
@@ -163,6 +164,7 @@ int avcodec_parameters_to_context(AVCodecContext *codec,
         codec->width                  = par->width;
         codec->height                 = par->height;
         codec->field_order            = par->field_order;
+        codec->progressive_frame      = par->progressive_frame;
         codec->color_range            = par->color_range;
         codec->color_primaries        = par->color_primaries;
         codec->color_trc              = par->color_trc;

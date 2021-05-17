@@ -720,9 +720,9 @@ void avcodec_string(char *buf, int buf_size, AVCodecContext *enc, int encode)
             if (enc->field_order != AV_FIELD_UNKNOWN) {
                 const char *field_order = "progressive";
                 if (enc->field_order == AV_FIELD_TT)
-                    field_order = "top first";
+                    field_order = enc->progressive_frame ? "progressive (tff)" : "top first";
                 else if (enc->field_order == AV_FIELD_BB)
-                    field_order = "bottom first";
+                    field_order = enc->progressive_frame ? "progressive (bff)" : "bottom first";
                 else if (enc->field_order == AV_FIELD_TB)
                     field_order = "top coded first (swapped)";
                 else if (enc->field_order == AV_FIELD_BT)
