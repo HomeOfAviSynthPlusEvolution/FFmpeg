@@ -65,7 +65,6 @@ typedef struct H264ParseContext {
     uint8_t parse_history[6];
     int parse_history_count;
     int parse_last_mb;
-    int64_t reference_dts;
     int last_frame_num, last_picture_structure;
 } H264ParseContext;
 
@@ -640,30 +639,6 @@ static int h264_parse(AVCodecParserContext *s,
         s->flags &= PARSER_FLAG_COMPLETE_FRAMES;
     }
 
-    if (s->dts_sync_point >= 0) {
-        int64_t den = time_base.den * (int64_t)avctx->pkt_timebase.num;
-        if (den > 0) {
-            int64_t num = time_base.num * (int64_t)avctx->pkt_timebase.den;
-            if (s->dts != AV_NOPTS_VALUE) {
-                // got DTS from the stream, update reference timestamp
-                p->reference_dts = av_sat_sub64(s->dts, av_rescale(s->dts_ref_dts_delta, num, den));
-            } else if (p->reference_dts != AV_NOPTS_VALUE) {
-                // compute DTS based on reference timestamp
-                s->dts = av_sat_add64(p->reference_dts, av_rescale(s->dts_ref_dts_delta, num, den));
-            }
-
-            if (p->reference_dts != AV_NOPTS_VALUE && s->pts == AV_NOPTS_VALUE) {
-                int64_t pts_dts_delta = av_rescale(s->pts_dts_delta, num, den);
-                uint64_t pts = (uint64_t)s->dts + pts_dts_delta;
-                if (pts == av_sat_add64(s->dts, pts_dts_delta))
-                    s->pts = pts;
-            }
-
-            if (s->dts_sync_point > 0)
-                p->reference_dts = s->dts; // new reference
-        }
-    }
-
     *poutbuf      = buf;
     *poutbuf_size = buf_size;
     return next;
@@ -684,7 +659,6 @@ static av_cold int init(AVCodecParserContext *s)
 {
     H264ParseContext *p = s->priv_data;
 
-    p->reference_dts = AV_NOPTS_VALUE;
     p->last_frame_num = INT_MAX;
     ff_h264dsp_init(&p->h264dsp, 8, 1);
     return 0;
