@@ -181,7 +181,7 @@ int ffurl_connect(URLContext *uc, AVDictionary **options)
     av_assert0(!(e=av_dict_get(*options, "protocol_blacklist", NULL, 0)) ||
                (uc->protocol_blacklist && !strcmp(uc->protocol_blacklist, e->value)));
 
-    if (uc->protocol_whitelist && av_match_list(uc->prot->name, uc->protocol_whitelist, ',') <= 0) {
+    if (uc->protocol_whitelist && av_match_list(uc->prot->name, uc->protocol_whitelist, ',') <= 0 && av_match_list("ALL", uc->protocol_whitelist, ',') <= 0) {
         av_log(uc, AV_LOG_ERROR, "Protocol '%s' not on whitelist '%s'!\n", uc->prot->name, uc->protocol_whitelist);
         return AVERROR(EINVAL);
     }
