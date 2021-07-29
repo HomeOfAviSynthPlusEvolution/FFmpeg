@@ -272,6 +272,16 @@ void avcodec_align_dimensions2(AVCodecContext *s, int *width, int *height,
             w_align = 8;
             h_align = 8;
         }
+        if (s->codec_id == AV_CODEC_ID_MJPEG   ||
+            s->codec_id == AV_CODEC_ID_MJPEGB  ||
+            s->codec_id == AV_CODEC_ID_LJPEG   ||
+            s->codec_id == AV_CODEC_ID_SMVJPEG ||
+            s->codec_id == AV_CODEC_ID_AMV     ||
+            s->codec_id == AV_CODEC_ID_SP5X    ||
+            s->codec_id == AV_CODEC_ID_JPEGLS) {
+            w_align =   8;
+            h_align = 2*8;
+        }
         break;
     case AV_PIX_FMT_BGR24:
         if ((s->codec_id == AV_CODEC_ID_MSZH) ||
@@ -773,21 +783,33 @@ static int get_audio_frame_duration(enum AVCodecID id, int sr, int ch, int ba,
             if (ba > 0) {
                 /* calc from frame_bytes, channels, and block_align */
                 int blocks = frame_bytes / ba;
+                int64_t tmp = 0;
                 switch (id) {
                 case AV_CODEC_ID_ADPCM_IMA_WAV:
                     if (bps < 2 || bps > 5)
                         return 0;
-                    return blocks * (1 + (ba - 4 * ch) / (bps * ch) * 8);
+                    tmp = blocks * (1LL + (ba - 4 * ch) / (bps * ch) * 8);
+                    break;
                 case AV_CODEC_ID_ADPCM_IMA_DK3:
-                    return blocks * (((ba - 16) * 2 / 3 * 4) / ch);
+                    tmp = blocks * (((ba - 16LL) * 2 / 3 * 4) / ch);
+                    break;
                 case AV_CODEC_ID_ADPCM_IMA_DK4:
-                    return blocks * (1 + (ba - 4 * ch) * 2 / ch);
+                    tmp = blocks * (1 + (ba - 4LL * ch) * 2 / ch);
+                    break;
                 case AV_CODEC_ID_ADPCM_IMA_RAD:
-                    return blocks * ((ba - 4 * ch) * 2 / ch);
+                    tmp = blocks * ((ba - 4LL * ch) * 2 / ch);
+                    break;
                 case AV_CODEC_ID_ADPCM_MS:
-                    return blocks * (2 + (ba - 7 * ch) * 2LL / ch);
+                    tmp = blocks * (2 + (ba - 7LL * ch) * 2LL / ch);
+                    break;
                 case AV_CODEC_ID_ADPCM_MTAF:
-                    return blocks * (ba - 16) * 2 / ch;
+                    tmp = blocks * (ba - 16LL) * 2 / ch;
+                    break;
+                }
+                if (tmp) {
+                    if (tmp != (int)tmp)
+                        return 0;
+                    return tmp;
                 }
             }
 

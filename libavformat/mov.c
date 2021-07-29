@@ -4700,6 +4700,8 @@ static int mov_read_chap(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     for (i = 0; i < num && !pb->eof_reached; i++)
         c->chapter_tracks[i] = avio_rb32(pb);
 
+    c->nb_chapter_tracks = i;
+
     return 0;
 }
 
@@ -5124,7 +5126,9 @@ static int mov_read_sidx(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         if (frag_stream_info)
             frag_stream_info->sidx_pts = timestamp;
 
-        if (av_sat_add64(offset, size) != offset + size)
+        if (av_sat_add64(offset, size) != offset + size ||
+            av_sat_add64(pts, duration) != pts + (uint64_t)duration
+        )
             return AVERROR_INVALIDDATA;
         offset += size;
         pts += duration;
@@ -5464,7 +5468,7 @@ static int mov_read_mdcv(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
     sc = c->fc->streams[c->fc->nb_streams - 1]->priv_data;
 
-    if (atom.size < 24) {
+    if (atom.size < 24 || sc->mastering) {
         av_log(c->fc, AV_LOG_ERROR, "Invalid Mastering Display Color Volume box\n");
         return AVERROR_INVALIDDATA;
     }
@@ -5511,6 +5515,11 @@ static int mov_read_coll(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return 0;
     }
     avio_skip(pb, 3); /* flags */
+
+    if (sc->coll){
+        av_log(c->fc, AV_LOG_WARNING, "Ignoring duplicate COLL\n");
+        return 0;
+    }
 
     sc->coll = av_content_light_metadata_alloc(&sc->coll_size);
     if (!sc->coll)

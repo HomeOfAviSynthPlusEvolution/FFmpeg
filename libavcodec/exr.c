@@ -418,7 +418,7 @@ static int huf_decode(VLC *vlc, GetByteContext *gb, int nbits, int run_sym,
 
     init_get_bits(&gbit, gb->buffer, nbits);
     while (get_bits_left(&gbit) > 0 && oe < no) {
-        uint16_t x = get_vlc2(&gbit, vlc->table, 12, 2);
+        uint16_t x = get_vlc2(&gbit, vlc->table, 12, 3);
 
         if (x == run_sym) {
             int run = get_bits(&gbit, 8);
@@ -1059,11 +1059,11 @@ static int dwa_uncompress(EXRContext *s, const uint8_t *src, int compressed_size
         bytestream2_skip(&gb, ac_size);
     }
 
-    if (dc_size > 0) {
+    {
         unsigned long dest_len = dc_count * 2LL;
         GetByteContext agb = gb;
 
-        if (dc_count > (6LL * td->xsize * td->ysize + 63) / 64)
+        if (dc_count != dc_w * dc_h * 3)
             return AVERROR_INVALIDDATA;
 
         av_fast_padded_malloc(&td->dc_data, &td->dc_size, FFALIGN(dest_len, 64) * 2);
@@ -1795,6 +1795,7 @@ static int decode_header(EXRContext *s, AVFrame *frame)
             ymax   = bytestream2_get_le32(gb);
 
             if (xmin > xmax || ymin > ymax ||
+                ymax == INT_MAX || xmax == INT_MAX ||
                 (unsigned)xmax - xmin >= INT_MAX ||
                 (unsigned)ymax - ymin >= INT_MAX) {
                 ret = AVERROR_INVALIDDATA;
