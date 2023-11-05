@@ -25,6 +25,7 @@
 #include "parser.h"
 #include "mpeg12.h"
 #include "mpeg12data.h"
+#include "mpegutils.h"
 #include "startcode.h"
 
 struct MpvParseContext {
@@ -111,13 +112,9 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
     int bit_rate = 0;
     int vbv_delay = 0;
     enum AVPixelFormat pix_fmt = AV_PIX_FMT_NONE;
-
-    // number of picture coding extensions (i.e. MPEG2 pictures)
-    // in this packet - should be 1 or 2
-    int nb_pic_ext = 0;
-    // when there are two pictures in the packet this indicates
-    // which field is in the first of them
-    int first_field = AV_FIELD_UNKNOWN;
+//FIXME replace the crap with get_bits()
+    s->repeat_pict = 0;
+    s->picture_structure = AV_PICTURE_STRUCTURE_UNKNOWN;
 
 //FIXME replace the crap with get_bits()
     while (buf < buf_end) {
@@ -127,9 +124,11 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
         switch(start_code) {
         case PICTURE_START_CODE:
             if (bytes_left >= 2) {
+                s->output_picture_number = (buf[0] << 2) | (buf[1] >> 6);
                 s->pict_type = (buf[1] >> 3) & 7;
                 if (bytes_left >= 4)
                     vbv_delay = ((buf[1] & 0x07) << 13) | (buf[2] << 5) | (buf[3] >> 3);
+                s->repeat_pict = 1;
             }
             break;
         case SEQ_START_CODE:
@@ -190,24 +189,24 @@ FF_ENABLE_DEPRECATION_WARNINGS
                     break;
                 case 0x8: /* picture coding extension */
                     if (bytes_left >= 5) {
-                        int    top_field_first = buf[3] & (1 << 7);
+                        int picture_structure = buf[2] & 0x03;
+                        int top_field_first = buf[3] & (1 << 7);
                         int repeat_first_field = buf[3] & (1 << 1);
-                        int  progressive_frame = buf[4] & (1 << 7);
+                        avctx->progressive_frame = !!(buf[4] & (1 << 7));
 
                         /* check if we must repeat the frame */
-                        s->repeat_pict = 1;
                         if (repeat_first_field) {
                             if (pc->progressive_sequence) {
                                 if (top_field_first)
                                     s->repeat_pict = 5;
                                 else
                                     s->repeat_pict = 3;
-                            } else if (progressive_frame) {
+                            } else if (avctx->progressive_frame) {
                                 s->repeat_pict = 2;
                             }
                         }
 
-                        if (!pc->progressive_sequence && !progressive_frame) {
+                        if (!pc->progressive_sequence) {
                             if (top_field_first)
                                 s->field_order = AV_FIELD_TT;
                             else
@@ -215,18 +214,17 @@ FF_ENABLE_DEPRECATION_WARNINGS
                         } else
                             s->field_order = AV_FIELD_PROGRESSIVE;
 
-                        s->picture_structure = buf[2] & 3;
-
-                        if (!nb_pic_ext) {
-                            // remember parity of the first field for the case
-                            // when there are 2 fields in packet
-                            switch (s->picture_structure) {
-                            case AV_PICTURE_STRUCTURE_BOTTOM_FIELD: first_field = AV_FIELD_BB; break;
-                            case AV_PICTURE_STRUCTURE_TOP_FIELD:    first_field = AV_FIELD_TT; break;
-                            }
+                        switch (picture_structure) {
+                        case PICT_TOP_FIELD:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_TOP_FIELD;
+                            break;
+                        case PICT_BOTTOM_FIELD:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_BOTTOM_FIELD;
+                            break;
+                        case PICT_FRAME:
+                            s->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
+                            break;
                         }
-
-                        nb_pic_ext++;
                     }
                     break;
                 }
@@ -261,12 +259,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         s->height = pc->height;
         s->coded_width  = FFALIGN(pc->width,  16);
         s->coded_height = FFALIGN(pc->height, 16);
-    }
-
-    if (avctx->codec_id == AV_CODEC_ID_MPEG1VIDEO || nb_pic_ext > 1) {
-        s->repeat_pict       = 1;
-        s->picture_structure = AV_PICTURE_STRUCTURE_FRAME;
-        s->field_order       = nb_pic_ext > 1 ? first_field : AV_FIELD_PROGRESSIVE;
     }
 }
 
