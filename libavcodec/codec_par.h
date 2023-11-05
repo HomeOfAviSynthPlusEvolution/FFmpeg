@@ -161,6 +161,11 @@ typedef struct AVCodecParameters {
     enum AVFieldOrder                  field_order;
 
     /**
+     * Video only. Progressive frame flag.
+     */
+    int progressive_frame;
+
+    /**
      * Video only. Additional colorspace characteristics.
      */
     enum AVColorRange                  color_range;

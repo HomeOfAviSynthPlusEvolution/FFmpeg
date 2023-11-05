@@ -682,6 +682,13 @@ typedef struct AVCodecContext {
     enum AVFieldOrder field_order;
 
     /**
+     * Progressive frame flag.
+     * - encoding: unused
+     * - decoding: Set by libavcodec
+     */
+    int progressive_frame;
+
+    /**
      * number of reference frames
      * - encoding: Set by user.
      * - decoding: Set by lavc.

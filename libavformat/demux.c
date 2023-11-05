@@ -520,8 +520,15 @@ static int update_wrap_reference(AVFormatContext *s, AVStream *st, int stream_in
             if (program->pts_wrap_reference != pts_wrap_reference) {
                 for (unsigned i = 0; i < program->nb_stream_indexes; i++) {
                     FFStream *const sti = ffstream(s->streams[program->stream_index[i]]);
-                    sti->pts_wrap_reference = pts_wrap_reference;
-                    sti->pts_wrap_behavior  = pts_wrap_behavior;
+                    if (sti->pts_wrap_reference != AV_NOPTS_VALUE &&
+                        (sti->pts_wrap_reference - pts_wrap_reference > 1LL << st->pts_wrap_bits-3 ||
+                         sti->pts_wrap_reference < pts_wrap_reference)) {
+                            pts_wrap_reference = sti->pts_wrap_reference;
+                            pts_wrap_behavior = sti->pts_wrap_behavior;
+                    } else {
+                            sti->pts_wrap_reference = pts_wrap_reference;
+                            sti->pts_wrap_behavior = pts_wrap_behavior;
+                    }
                 }
 
                 program->pts_wrap_reference = pts_wrap_reference;
