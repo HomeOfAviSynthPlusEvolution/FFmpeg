@@ -644,7 +644,44 @@ static int h264_parse(AVCodecParserContext *s,
     return next;
 }
 
-static av_cold void h264_close(AVCodecParserContext *s)
+static int h264_split(AVCodecContext *avctx,
+                      const uint8_t *buf, int buf_size)
+{
+    uint32_t state = -1;
+    int has_sps    = 0;
+    int has_pps    = 0;
+    const uint8_t *ptr = buf, *end = buf + buf_size;
+    int nalu_type;
+
+    while (ptr < end) {
+        ptr = avpriv_find_start_code(ptr, end, &state);
+        if ((state & 0xFFFFFF00) != 0x100)
+            break;
+        nalu_type = state & 0x1F;
+        if (nalu_type == H264_NAL_SPS) {
+            has_sps = 1;
+        } else if (nalu_type == H264_NAL_PPS)
+            has_pps = 1;
+        /* else if (nalu_type == 0x01 ||
+         *     nalu_type == 0x02 ||
+         *     nalu_type == 0x05) {
+         *  }
+         */
+        else if ((nalu_type != H264_NAL_SEI || has_pps) &&
+                  nalu_type != H264_NAL_AUD && nalu_type != H264_NAL_SPS_EXT &&
+                  nalu_type != 0x0f) {
+            if (has_sps) {
+                while (ptr - 4 > buf && ptr[-5] == 0)
+                    ptr--;
+                return ptr - 4 - buf;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void h264_close(AVCodecParserContext *s)
 {
     H264ParseContext *p = s->priv_data;
     ParseContext *pc = &p->pc;
@@ -670,4 +707,5 @@ const FFCodecParser ff_h264_parser = {
     .init           = init,
     .parse          = h264_parse,
     .close          = h264_close,
+    .split          = h264_split,
 };
