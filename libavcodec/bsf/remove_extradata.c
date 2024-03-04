@@ -21,14 +21,12 @@
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 
+#include "avcodec.h"
 #include "av1_parse.h"
 #include "bsf.h"
 #include "bsf_internal.h"
-#include "h264.h"
 #include "startcode.h"
 #include "vc1_common.h"
-
-#include "hevc/hevc.h"
 
 enum RemoveFreq {
     REMOVE_FREQ_KEYFRAME,
@@ -41,6 +39,9 @@ enum RemoveFreq {
 typedef struct RemoveExtradataContext {
     const AVClass *class;
     int freq;
+
+    AVCodecParserContext *parser;
+    AVCodecContext *avctx;
 } RemoveExtradataContext;
 
 static int av1_split(const uint8_t *buf, int buf_size, void *logctx)
@@ -61,75 +62,6 @@ static int av1_split(const uint8_t *buf, int buf_size, void *logctx)
         buf_size -= len;
     }
 
-    return 0;
-}
-
-static int h264_split(const uint8_t *buf, int buf_size)
-{
-    const uint8_t *ptr = buf, *end = buf + buf_size;
-    uint32_t state = -1;
-    int has_sps    = 0;
-    int has_pps    = 0;
-    int nalu_type;
-
-    while (ptr < end) {
-        ptr = avpriv_find_start_code(ptr, end, &state);
-        if ((state & 0xFFFFFF00) != 0x100)
-            break;
-        nalu_type = state & 0x1F;
-        if (nalu_type == H264_NAL_SPS) {
-            has_sps = 1;
-        } else if (nalu_type == H264_NAL_PPS)
-            has_pps = 1;
-        /* else if (nalu_type == 0x01 ||
-         *     nalu_type == 0x02 ||
-         *     nalu_type == 0x05) {
-         *  }
-         */
-        else if ((nalu_type != H264_NAL_SEI || has_pps) &&
-                  nalu_type != H264_NAL_AUD && nalu_type != H264_NAL_SPS_EXT &&
-                  nalu_type != 0x0f) {
-            if (has_sps) {
-                while (ptr - 4 > buf && ptr[-5] == 0)
-                    ptr--;
-                return ptr - 4 - buf;
-            }
-        }
-    }
-
-    return 0;
-}
-
-// Split after the parameter sets at the beginning of the stream if they exist.
-static int hevc_split(const uint8_t *buf, int buf_size)
-{
-    const uint8_t *ptr = buf, *end = buf + buf_size;
-    uint32_t state = -1;
-    int has_vps = 0;
-    int has_sps = 0;
-    int has_pps = 0;
-    int nut;
-
-    while (ptr < end) {
-        ptr = avpriv_find_start_code(ptr, end, &state);
-        if ((state >> 8) != START_CODE)
-            break;
-        nut = (state >> 1) & 0x3F;
-        if (nut == HEVC_NAL_VPS)
-            has_vps = 1;
-        else if (nut == HEVC_NAL_SPS)
-            has_sps = 1;
-        else if (nut == HEVC_NAL_PPS)
-            has_pps = 1;
-        else if ((nut != HEVC_NAL_SEI_PREFIX || has_pps) &&
-                  nut != HEVC_NAL_AUD) {
-            if (has_vps && has_sps) {
-                while (ptr - 4 > buf && ptr[-5] == 0)
-                    ptr--;
-                return ptr - 4 - buf;
-            }
-        }
-    }
     return 0;
 }
 
@@ -205,10 +137,8 @@ static int remove_extradata(AVBSFContext *ctx, AVPacket *pkt)
             i = mpeg4video_split(pkt->data, pkt->size);
             break;
         case AV_CODEC_ID_H264:
-            i = h264_split(pkt->data, pkt->size);
-            break;
         case AV_CODEC_ID_HEVC:
-            i = hevc_split(pkt->data, pkt->size);
+            i = s->parser->parser->split(s->avctx, pkt->data, pkt->size);
             break;
         case AV_CODEC_ID_MPEG1VIDEO:
         case AV_CODEC_ID_MPEG2VIDEO:
