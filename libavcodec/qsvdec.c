@@ -104,6 +104,8 @@ typedef struct QSVContext {
     int suggest_pool_size;
     int initialized;
 
+    int flush;
+
     // options set by the caller
     int async_depth;
     int iopattern;
@@ -412,6 +414,8 @@ static int qsv_decode_init_context(AVCodecContext *avctx, QSVContext *q, mfxVide
                                   "Error initializing the MFX video decoder");
 
     q->frame_info = param->mfx.FrameInfo;
+
+    q->flush = 0;
 
     if (!avctx->hw_frames_ctx) {
         ret = av_image_get_buffer_size(avctx->pix_fmt, FFALIGN(avctx->coded_width, 128), FFALIGN(avctx->coded_height, 64), 1);
@@ -1058,6 +1062,21 @@ static int qsv_process_data(AVCodecContext *avctx, QSVContext *q,
         q->initialized = 1;
     }
 
+    if (q->flush) {
+        q->reinit_flag = 0;
+        ret = qsv_decode_header(avctx, q, pkt, pix_fmt, &param);
+        if (ret < 0) {
+            if (ret == AVERROR(EAGAIN))
+                av_log(avctx, AV_LOG_VERBOSE, "More data is required to decode header\n");
+            else
+                av_log(avctx, AV_LOG_ERROR, "Error decoding header\n");
+            goto reinit_fail;
+        }
+
+        q->orig_pix_fmt = avctx->pix_fmt = ff_qsv_map_fourcc(param.mfx.FrameInfo.FourCC);
+        q->flush = 0;
+    }
+
     return qsv_decode(avctx, q, frame, got_frame, pkt);
 
 reinit_fail:
@@ -1210,8 +1229,24 @@ static void qsv_decode_flush(AVCodecContext *avctx)
 
     qsv_clear_buffers(s);
 
+    if (s->qsv.session) {
+        mfxVideoParam param = { 0 };
+
+        int ret = MFXVideoDECODE_GetVideoParam(s->qsv.session, &param);
+        if (ret < 0) {
+            ff_qsv_print_error(avctx, ret, "MFX decode get param error");
+            return;
+        }
+
+        ret = MFXVideoDECODE_Reset(s->qsv.session, &param);
+        if (ret < 0) {
+            ff_qsv_print_error(avctx, ret, "MFX decode reset error");
+            return;
+        }
+    }
+
     s->qsv.orig_pix_fmt = AV_PIX_FMT_NONE;
-    s->qsv.initialized = 0;
+    s->qsv.flush = 1;
 }
 
 #define OFFSET(x) offsetof(QSVDecContext, x)
